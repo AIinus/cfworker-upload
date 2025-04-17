@@ -2,10 +2,10 @@
   "name": "cfworker-upload",
   "compatibility_date": "2025-04-17",
   "main": "upload_video.js",
-  "bindings": {
-    "VIDEO_BUCKET": {
-      "type": "r2",
+  "r2_buckets": [
+    {
+      "binding": "VIDEO_BUCKET",
       "bucket_name": "aieffi"
     }
-  }
+  ]
 }
