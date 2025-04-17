@@ -1,0 +1,5 @@
+{
+  "deploy": {
+    "command": "npx wrangler deploy upload_video.js"
+  }
+}
