@@ -1,4 +1,4 @@
-name = "upload-video"
+name = "cfworker-upload"
 main = "upload_video.js"  # 移除 ./ 前缀，使用相对路径
 compatibility_date = "2025-04-17"
 
