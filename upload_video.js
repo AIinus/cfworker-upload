@@ -304,8 +304,8 @@ export default {
 
       // 解析 n8n 发送的 JSON 请求体
       const body = await request.json();
-      const { platform, videoPath, metadata } = body;
-
+      // 解构所有需要的参数，包括新的可选参数
+      const { platform, videoPath, metadata, coverPath, publish_time, YT_channelId } = body;
 
       if (!platform || !videoPath || !metadata) {
         return new Response('缺少必需字段: platform, videoPath, metadata', { status: 400 });
@@ -323,15 +323,17 @@ export default {
       }
       const videoStream = object.body;
 
-      // 调用上传函数，将视频上传到指定平台
-      const result = await uploadToPlatform(platform, videoStream, metadata, accessToken);
+      // 调用上传函数，传递所有参数，包括新增的可选参数
+      const result = await uploadToPlatform(platform, videoStream, metadata, accessToken, coverPath, publish_time, YT_channelId, env);
 
-      // 返回成功响应
+      // 返回成功响应，包含更丰富的信息
       return new Response(JSON.stringify({
         success: true,
         platform: platform,
         videoId: result.id || 'N/A',
-        message: `视频成功上传到 ${platform}`
+        videoStatus: result.status, // 包含 privacyStatus, publishAt 等
+        thumbnailStatus: result.thumbnailUploadStatus || 'N/A', // 封面上传状态
+        message: `视频成功上传到 ${platform}` + (result.thumbnailUploadStatus ? ` (${result.thumbnailUploadStatus})` : '')
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
