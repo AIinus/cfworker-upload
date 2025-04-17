@@ -122,10 +122,11 @@ export async function uploadToYouTube(videoStream, metadata, accessToken, reques
   const coverPathMedium = requestBody['coverPath-medium'];
   const coverPathDefault = requestBody['coverPath-default'] || requestBody['coverPath']; // 兼容旧参数名
   
-  // 按优先级选择封面
+  // 按优先级选择封面，确保值不为 null
   const selectedCoverPath = coverPathHigh || coverPathMedium || coverPathDefault;
   
-  if (selectedCoverPath) {
+  // 只有当 selectedCoverPath 存在且不为 null 时才尝试上传封面
+  if (selectedCoverPath && selectedCoverPath !== null) {
     try {
       let thumbnailStream;
       let thumbnailContentType;
@@ -185,12 +186,23 @@ export async function uploadToYouTube(videoStream, metadata, accessToken, reques
       thumbnailUploadStatus = `封面处理/上传时出错: ${thumbError.message}`;
       console.error(`封面处理/上传时出错 for video ${videoId}: ${thumbError.message}`);
     }
+  } else {
+    thumbnailUploadStatus = '未提供有效封面路径，将使用 YouTube 自动生成的封面';
+    console.log(`视频 ${videoId} 将使用 YouTube 自动生成的封面`);
   }
 
   // 返回包含视频信息和封面状态的结果
   return {
       ...videoResult, // 包含原始的 video insert 结果 (id, snippet, status 等)
-      thumbnailUploadStatus: thumbnailUploadStatus
+      thumbnailUploadStatus: thumbnailUploadStatus,
+      // 添加 YouTube 自动生成的预设封面图 URL
+      presetThumbnails: {
+        default: `https://i.ytimg.com/vi/${videoId}/default.jpg`,
+        medium: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
+        high: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+        standard: `https://i.ytimg.com/vi/${videoId}/sddefault.jpg`,
+        maxres: `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`
+      }
   };
 }
 
