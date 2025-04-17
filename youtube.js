@@ -193,6 +193,7 @@ export async function getLatestYouTubeVideo(accessToken, channelId) {
   try {
     // 检查 accessToken 是否已经包含 Bearer 前缀
     const formattedAccessToken = accessToken.startsWith('Bearer ') ? accessToken : `Bearer ${accessToken}`;
+    console.log(`准备获取 YouTube 最新视频，令牌前缀: ${formattedAccessToken.substring(0, 15)}...`);
     
     // 构建基础 URL 和参数
     const baseUrl = 'https://www.googleapis.com/youtube/v3/search';
@@ -206,11 +207,14 @@ export async function getLatestYouTubeVideo(accessToken, channelId) {
     // 根据是否提供了 channelId 添加参数
     if (channelId) {
       params.set('channelId', channelId);
+      console.log(`使用指定频道 ID: ${channelId}`);
     } else {
       params.set('forMine', 'true'); // 默认获取自己的视频
+      console.log('使用 forMine=true 获取认证用户的视频');
     }
 
     const apiUrl = `${baseUrl}?${params.toString()}`;
+    console.log(`发送请求到 YouTube API: ${apiUrl}`);
 
     const response = await fetch(apiUrl, {
       method: 'GET',
@@ -220,15 +224,18 @@ export async function getLatestYouTubeVideo(accessToken, channelId) {
     });
 
     const responseText = await response.text();
-    let responseData;
+    console.log(`YouTube API 响应状态码: ${response.status}`);
     
+    let responseData;
     try {
       responseData = JSON.parse(responseText);
     } catch (e) {
+      console.error(`解析响应失败: ${responseText}`);
       throw new Error(`YouTube API 响应解析失败: ${responseText}`);
     }
 
     if (!response.ok) {
+      console.error(`API 错误: ${JSON.stringify(responseData)}`);
       throw new Error(`YouTube API 错误 (${response.status}): ${JSON.stringify(responseData)}`);
     }
 
