@@ -16,6 +16,10 @@ export async function uploadToYouTube(videoStream, metadata, accessToken, reques
   // --- 1. 上传视频元数据和内容 (videos.insert) ---
   const boundary = '----CloudflareWorkerBoundary' + Math.random().toString(16).substr(2);
   
+  // 检查 accessToken 是否已经包含 Bearer 前缀
+  const formattedAccessToken = accessToken.startsWith('Bearer ') ? accessToken : `Bearer ${accessToken}`;
+  console.log(`准备上传视频到 YouTube，令牌前缀: ${formattedAccessToken.substring(0, 15)}...`);
+  
   const videoMetadata = {
     snippet: {
       title: metadata.title,
@@ -82,7 +86,7 @@ export async function uploadToYouTube(videoStream, metadata, accessToken, reques
   const videoUploadResponse = await fetch('https://www.googleapis.com/upload/youtube/v3/videos?part=snippet,status', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${accessToken}`,
+      'Authorization': formattedAccessToken,  // 使用处理过的 accessToken
       'Content-Type': `multipart/related; boundary=${boundary}`
     },
     body: multipartBody
@@ -144,7 +148,7 @@ export async function uploadToYouTube(videoStream, metadata, accessToken, reques
       
       // 准备上传封面的请求头
       const headers = {
-        'Authorization': `Bearer ${accessToken}`,
+        'Authorization': formattedAccessToken,  // 使用处理过的 accessToken
         'Content-Type': thumbnailContentType
       };
       
@@ -187,6 +191,9 @@ export async function uploadToYouTube(videoStream, metadata, accessToken, reques
  */
 export async function getLatestYouTubeVideo(accessToken, channelId) {
   try {
+    // 检查 accessToken 是否已经包含 Bearer 前缀
+    const formattedAccessToken = accessToken.startsWith('Bearer ') ? accessToken : `Bearer ${accessToken}`;
+    
     // 构建基础 URL 和参数
     const baseUrl = 'https://www.googleapis.com/youtube/v3/search';
     const params = new URLSearchParams({
@@ -208,7 +215,7 @@ export async function getLatestYouTubeVideo(accessToken, channelId) {
     const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${accessToken}`
+        'Authorization': formattedAccessToken  // 使用处理过的 accessToken
       }
     });
 
