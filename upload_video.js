@@ -106,10 +106,45 @@ async function uploadToPlatform(platform, videoStream, metadata, accessToken) {
 /**
  * Cloudflare Worker 的入口函数，处理所有请求。
  */
+/**
+ * 获取 YouTube 最新发布的视频信息
+ * @param {string} accessToken - YouTube API 的访问令牌
+ * @returns {Promise<Object>} - 最新视频的信息
+ */
+async function getLatestYouTubeVideo(accessToken) {
+  const response = await fetch('https://www.googleapis.com/youtube/v3/search?part=snippet&forMine=true&maxResults=1&order=date&type=video', {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`YouTube API 错误: ${response.status} ${await response.text()}`);
+  }
+
+  const data = await response.json();
+  if (!data.items || data.items.length === 0) {
+    throw new Error('未找到视频');
+  }
+
+  const video = data.items[0];
+  return {
+    id: video.id.videoId,
+    title: video.snippet.title,
+    description: video.snippet.description,
+    publishedAt: video.snippet.publishedAt,
+    thumbnails: video.snippet.thumbnails
+  };
+}
+
 export default {
   async fetch(request, env, ctx) {
-    // 添加对 GET 请求的支持，用于健康检查
-    if (request.method === 'GET') {
+    // 解析请求 URL
+    const url = new URL(request.url);
+    
+    // 健康检查端点
+    if (request.method === 'GET' && url.pathname === '/') {
       return new Response(JSON.stringify({
         status: 'healthy',
         timestamp: new Date().toISOString()
@@ -119,11 +154,41 @@ export default {
       });
     }
 
-    // 仅处理 POST 请求
+    // 获取最新视频端点
+    if (request.method === 'GET' && url.pathname === '/latest') {
+      try {
+        // 验证请求的 API 密钥
+        const apiSecret = request.headers.get('X-API-Secret');
+        if (!apiSecret || apiSecret !== env.API_SECRET) {
+          return new Response('API 密钥无效或缺失', { status: 401 });
+        }
+
+        const accessToken = request.headers.get('Authorization')?.replace('Bearer ', '');
+        if (!accessToken) {
+          return new Response('缺少 Authorization 头或 accessToken', { status: 401 });
+        }
+
+        const latestVideo = await getLatestYouTubeVideo(accessToken);
+        return new Response(JSON.stringify(latestVideo), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (error) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: error.message
+        }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    // 原有的上传视频逻辑
     if (request.method !== 'POST') {
       return new Response('请求方法不支持，仅支持 GET 和 POST', { status: 405 });
     }
-
+    
     try {
       // 验证请求的 API 密钥（通过请求头 X-API-Secret）
       const apiSecret = request.headers.get('X-API-Secret');
@@ -131,13 +196,18 @@ export default {
         return new Response('API 密钥无效或缺失', { status: 401 });
       }
 
+      const accessToken = request.headers.get('Authorization')?.replace('Bearer ', '');
+      if (!accessToken) {
+        return new Response('缺少 Authorization 头或 accessToken', { status: 401 });
+      }
+
       // 解析 n8n 发送的 JSON 请求体
       const body = await request.json();
-      const { platform, videoPath, accessToken, metadata } = body;
+      const { platform, videoPath, metadata } = body;
 
-      // 验证请求体是否包含必需字段
-      if (!platform || !videoPath || !accessToken || !metadata) {
-        return new Response('缺少必需字段: platform, videoPath, accessToken, metadata', { status: 400 });
+
+      if (!platform || !videoPath || !metadata) {
+        return new Response('缺少必需字段: platform, videoPath, metadata', { status: 400 });
       }
 
       // 验证元数据是否包含必要字段
