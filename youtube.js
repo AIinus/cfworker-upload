@@ -14,9 +14,8 @@
  */
 export async function uploadToYouTube(videoStream, metadata, accessToken, requestBody, publish_time, env) {
   // --- 1. 上传视频元数据和内容 (videos.insert) ---
-  const boundary = '----CloudflareWorkerBoundary';
-  const formData = new FormData();
-
+  const boundary = '----CloudflareWorkerBoundary' + Math.random().toString(16).substr(2);
+  
   const videoMetadata = {
     snippet: {
       title: metadata.title,
@@ -48,9 +47,37 @@ export async function uploadToYouTube(videoStream, metadata, accessToken, reques
     }
   }
 
-  const metadataPart = JSON.stringify(videoMetadata);
-  formData.append('metadata', new Blob([metadataPart], { type: 'application/json' }), 'metadata');
-  formData.append('media', new Blob([videoStream], { type: 'video/mp4' }), 'video.mp4');
+  // 手动构建 multipart 请求体
+  const metadataJson = JSON.stringify(videoMetadata);
+  
+  // 创建一个数组缓冲区来存储视频数据
+  const videoArrayBuffer = await new Response(videoStream).arrayBuffer();
+  
+  // 手动构建 multipart 请求体
+  const multipartBody = new ReadableStream({
+    async start(controller) {
+      // 添加元数据部分
+      const metadataPart = 
+        `--${boundary}\r\n` +
+        `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
+        `${metadataJson}\r\n`;
+      controller.enqueue(new TextEncoder().encode(metadataPart));
+      
+      // 添加视频部分
+      const videoPart = 
+        `--${boundary}\r\n` +
+        `Content-Type: video/mp4\r\n\r\n`;
+      controller.enqueue(new TextEncoder().encode(videoPart));
+      
+      // 添加视频数据
+      controller.enqueue(new Uint8Array(videoArrayBuffer));
+      
+      // 添加结束边界
+      controller.enqueue(new TextEncoder().encode(`\r\n--${boundary}--\r\n`));
+      
+      controller.close();
+    }
+  });
 
   const videoUploadResponse = await fetch('https://www.googleapis.com/upload/youtube/v3/videos?part=snippet,status', {
     method: 'POST',
@@ -58,7 +85,7 @@ export async function uploadToYouTube(videoStream, metadata, accessToken, reques
       'Authorization': `Bearer ${accessToken}`,
       'Content-Type': `multipart/related; boundary=${boundary}`
     },
-    body: formData
+    body: multipartBody
   });
 
   if (!videoUploadResponse.ok) {
