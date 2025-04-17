@@ -3,6 +3,18 @@
  */
 
 /**
+ * 格式化 YouTube API 访问令牌，确保它包含 Bearer 前缀
+ * @param {string} accessToken - 原始访问令牌
+ * @param {string} [operation='操作'] - 当前执行的操作名称，用于日志记录
+ * @returns {string} - 格式化后的访问令牌
+ */
+function formatAccessToken(accessToken, operation = '操作') {
+  const formattedAccessToken = accessToken.startsWith('Bearer ') ? accessToken : `Bearer ${accessToken}`;
+  console.log(`准备${operation} YouTube，令牌前缀: ${formattedAccessToken.substring(0, 15)}...`);
+  return formattedAccessToken;
+}
+
+/**
  * 将视频上传到 YouTube，使用 YouTube Data API 的 videos.insert 端点，并设置封面和发布时间。
  * @param {ReadableStream} videoStream - 从 R2 获取的视频数据流
  * @param {Object} metadata - 视频元数据
@@ -16,9 +28,8 @@ export async function uploadToYouTube(videoStream, metadata, accessToken, reques
   // --- 1. 上传视频元数据和内容 (videos.insert) ---
   const boundary = '----CloudflareWorkerBoundary' + Math.random().toString(16).substr(2);
   
-  // 检查 accessToken 是否已经包含 Bearer 前缀
-  const formattedAccessToken = accessToken.startsWith('Bearer ') ? accessToken : `Bearer ${accessToken}`;
-  console.log(`准备上传视频到 YouTube，令牌前缀: ${formattedAccessToken.substring(0, 15)}...`);
+  // 使用公共函数格式化 accessToken
+  const formattedAccessToken = formatAccessToken(accessToken, '上传视频到');
   
   const videoMetadata = {
     snippet: {
@@ -191,9 +202,8 @@ export async function uploadToYouTube(videoStream, metadata, accessToken, reques
  */
 export async function getLatestYouTubeVideo(accessToken, channelId) {
   try {
-    // 检查 accessToken 是否已经包含 Bearer 前缀
-    const formattedAccessToken = accessToken.startsWith('Bearer ') ? accessToken : `Bearer ${accessToken}`;
-    console.log(`准备获取 YouTube 最新视频，令牌前缀: ${formattedAccessToken.substring(0, 15)}...`);
+    // 使用公共函数格式化 accessToken
+    const formattedAccessToken = formatAccessToken(accessToken, '获取最新视频从');
     
     // 构建基础 URL 和参数
     const baseUrl = 'https://www.googleapis.com/youtube/v3/search';
