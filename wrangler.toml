@@ -1,5 +1,5 @@
 name = "upload-video"
-main = "upload_video.js"
+main = "./upload_video.js"
 compatibility_date = "2025-04-17"
 
 # R2 存储桶绑定
