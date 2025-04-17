@@ -25,21 +25,21 @@
  */
 
 /**
- * 将视频上传到 YouTube，使用 YouTube Data API 的 videos.insert 端点。
- * @param {ReadableStream} videoStream - 从 R2 获取的视频数据流（ReadableStream 格式）
- * @param {Object} metadata - 视频元数据，包含 title、description 等字段
- * @param {string} accessToken - YouTube API 的访问令牌（从请求体中获取）
- * @returns {Promise<Object>} - 上传结果，返回 YouTube API 的响应
+ * 将视频上传到 YouTube，使用 YouTube Data API 的 videos.insert 端点，并设置封面和发布时间。
+ * @param {ReadableStream} videoStream - 从 R2 获取的视频数据流
+ * @param {Object} metadata - 视频元数据
+ * @param {string} accessToken - YouTube API 的访问令牌
+ * @param {string} [coverPath] - R2 中封面图片的路径 (可选)
+ * @param {string} [publish_time] - ISO 8601 格式的计划发布时间 (可选)
+ * @param {object} env - Cloudflare Worker 环境变量，包含 R2 绑定
+ * @returns {Promise<Object>} - 上传结果，包含视频信息和封面上传状态
  */
-async function uploadToYouTube(videoStream, metadata, accessToken) {
-  // 定义 multipart 表单数据的边界字符串
+async function uploadToYouTube(videoStream, metadata, accessToken, coverPath, publish_time, env) {
+  // --- 1. 上传视频元数据和内容 (videos.insert) ---
   const boundary = '----CloudflareWorkerBoundary';
-  
-  // 创建 FormData 对象，用于构造 multipart/related 请求体
   const formData = new FormData();
 
-  // 添加元数据部分，转换为 JSON 字符串并包装为 Blob
-  const metadataPart = JSON.stringify({
+  const videoMetadata = {
     snippet: {
       title: metadata.title,
       description: metadata.description,
@@ -47,16 +47,25 @@ async function uploadToYouTube(videoStream, metadata, accessToken) {
       categoryId: metadata.categoryId
     },
     status: {
-      privacyStatus: metadata.privacyStatus || 'private'
+      // 如果设置了发布时间，强制设为 private，否则使用传入的值或默认 private
+      privacyStatus: publish_time ? 'private' : (metadata.privacyStatus || 'private')
     }
-  });
-  formData.append('metadata', new Blob([metadataPart], { type: 'application/json' }), 'metadata');
+  };
 
-  // 添加视频数据部分，将视频流包装为 Blob
+  // 如果有计划发布时间，添加到 status 对象
+  if (publish_time) {
+    // 验证时间格式是否大致符合 ISO 8601 (更严格的验证可以在调用端完成)
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(publish_time)) {
+       throw new Error(`无效的发布时间格式: ${publish_time}. 需要 ISO 8601 格式 (例如: 2025-04-17T23:57:16Z)`);
+    }
+    videoMetadata.status.publishAt = publish_time;
+  }
+
+  const metadataPart = JSON.stringify(videoMetadata);
+  formData.append('metadata', new Blob([metadataPart], { type: 'application/json' }), 'metadata');
   formData.append('media', new Blob([videoStream], { type: 'video/mp4' }), 'video.mp4');
 
-  // 发送请求到 YouTube API
-  const response = await fetch('https://www.googleapis.com/upload/youtube/v3/videos?part=snippet,status', {
+  const videoUploadResponse = await fetch('https://www.googleapis.com/upload/youtube/v3/videos?part=snippet,status', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${accessToken}`,
@@ -65,12 +74,56 @@ async function uploadToYouTube(videoStream, metadata, accessToken) {
     body: formData
   });
 
-  // 检查响应是否成功
-  if (!response.ok) {
-    throw new Error(`YouTube API 错误: ${response.status} ${await response.text()}`);
+  if (!videoUploadResponse.ok) {
+    throw new Error(`YouTube API 视频上传错误: ${videoUploadResponse.status} ${await videoUploadResponse.text()}`);
   }
 
-  return await response.json();
+  const videoResult = await videoUploadResponse.json();
+  const videoId = videoResult.id;
+
+  if (!videoId) {
+     throw new Error(`视频上传成功，但未能获取 videoId: ${JSON.stringify(videoResult)}`);
+  }
+
+  // --- 2. 上传封面 (thumbnails.set)，如果提供了 coverPath ---
+  let thumbnailUploadStatus = '未提供封面路径';
+  if (coverPath) {
+    try {
+      const thumbnailObject = await env.VIDEO_BUCKET.get(coverPath);
+      if (!thumbnailObject) {
+        throw new Error(`在 R2 中未找到封面文件: ${coverPath}`);
+      }
+      const thumbnailStream = thumbnailObject.body;
+      const thumbnailContentType = thumbnailObject.httpMetadata?.contentType || 'image/jpeg'; // 尝试获取 ContentType，默认为 jpeg
+
+      const thumbnailUploadResponse = await fetch(`https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=${videoId}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': thumbnailContentType,
+          'Content-Length': thumbnailObject.size // 提供 Content-Length
+        },
+        body: thumbnailStream
+      });
+
+      if (!thumbnailUploadResponse.ok) {
+        thumbnailUploadStatus = `封面上传失败: ${thumbnailUploadResponse.status} ${await thumbnailUploadResponse.text()}`;
+        // 注意：这里选择记录失败状态而不是抛出错误，因为视频本身可能已上传成功
+        console.error(`封面上传失败 for video ${videoId}: ${thumbnailUploadStatus}`);
+      } else {
+        thumbnailUploadStatus = '封面上传成功';
+      }
+    } catch (thumbError) {
+        thumbnailUploadStatus = `封面处理/上传时出错: ${thumbError.message}`;
+        console.error(`封面处理/上传时出错 for video ${videoId}: ${thumbError.message}`);
+    }
+  }
+
+  // 返回包含视频信息和封面状态的结果
+  return {
+      ...videoResult, // 包含原始的 video insert 结果 (id, snippet, status 等)
+      thumbnailUploadStatus: thumbnailUploadStatus
+  };
 }
 
 /**
@@ -86,18 +139,25 @@ async function uploadToBilibili(videoStream, metadata, accessToken) {
 
 /**
  * 主上传函数，根据平台路由到对应的上传逻辑。
- * @param {string} platform - 目标平台（例如 "youtube", "bilibili"）
- * @param {ReadableStream} videoStream - 从 R2 获取的视频数据流
+ * @param {string} platform - 目标平台
+ * @param {ReadableStream} videoStream - 视频流
  * @param {Object} metadata - 视频元数据
- * @param {string} accessToken - 平台的访问令牌（从请求体中获取）
+ * @param {string} accessToken - 访问令牌
+ * @param {string} [coverPath] - 封面路径 (可选)
+ * @param {string} [publish_time] - 发布时间 (可选)
+ * @param {string} [YT_channelId] - YouTube 频道 ID (可选, 供参考)
+ * @param {object} env - Cloudflare Worker 环境变量
  * @returns {Promise<Object>} - 上传结果
  */
-async function uploadToPlatform(platform, videoStream, metadata, accessToken) {
+async function uploadToPlatform(platform, videoStream, metadata, accessToken, coverPath, publish_time, YT_channelId, env) {
   switch (platform.toLowerCase()) {
     case 'youtube':
-      return await uploadToYouTube(videoStream, metadata, accessToken);
+      // 将 coverPath, publish_time, env 传递给 uploadToYouTube
+      // YT_channelId 可以在这里记录或用于其他逻辑，但 uploadToYouTube 不直接使用它选择频道
+      console.log(`准备上传到 YouTube 频道 (参考 ID: ${YT_channelId || '未提供'})`);
+      return await uploadToYouTube(videoStream, metadata, accessToken, coverPath, publish_time, env);
     case 'bilibili':
-      return await uploadToBilibili(videoStream, metadata, accessToken);
+      return await uploadToBilibili(videoStream, metadata, accessToken); // Bilibili 暂不支持新参数
     default:
       throw new Error(`不支持的平台: ${platform}`);
   }
