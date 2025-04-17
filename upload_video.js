@@ -109,11 +109,30 @@ async function uploadToPlatform(platform, videoStream, metadata, accessToken) {
 /**
  * 获取 YouTube 最新发布的视频信息
  * @param {string} accessToken - YouTube API 的访问令牌
+ * @param {string} [channelId] - 可选的目标频道 ID。如果提供，则获取该频道的最新视频；否则获取认证用户的最新视频。
  * @returns {Promise<Object>} - 最新视频的信息
  */
-async function getLatestYouTubeVideo(accessToken) {
+async function getLatestYouTubeVideo(accessToken, channelId) {
   try {
-    const response = await fetch('https://www.googleapis.com/youtube/v3/search?part=snippet&forMine=true&maxResults=1&order=date&type=video', {
+    // 构建基础 URL 和参数
+    const baseUrl = 'https://www.googleapis.com/youtube/v3/search';
+    const params = new URLSearchParams({
+      part: 'snippet',
+      maxResults: '1',
+      order: 'date',
+      type: 'video'
+    });
+
+    // 根据是否提供了 channelId 添加参数
+    if (channelId) {
+      params.set('channelId', channelId);
+    } else {
+      params.set('forMine', 'true'); // 默认获取自己的视频
+    }
+
+    const apiUrl = `${baseUrl}?${params.toString()}`;
+
+    const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${accessToken}`
@@ -134,7 +153,9 @@ async function getLatestYouTubeVideo(accessToken) {
     }
 
     if (!responseData.items || responseData.items.length === 0) {
-      throw new Error(`未找到视频 (API 响应: ${JSON.stringify(responseData)})`);
+       // 根据是否有 channelId 提供更具体的错误信息
+       const target = channelId ? `频道 ${channelId}` : '认证用户';
+       throw new Error(`在 ${target} 未找到视频 (API 响应: ${JSON.stringify(responseData)})`);
     }
 
     const video = responseData.items[0];
@@ -181,7 +202,12 @@ export default {
           return new Response('缺少 Authorization 头或 accessToken', { status: 401 });
         }
 
-        const latestVideo = await getLatestYouTubeVideo(accessToken);
+        // 从 URL 查询参数获取 channelId (可选)
+        const channelId = url.searchParams.get('channelId');
+
+        // 调用函数，传入 accessToken 和可选的 channelId
+        const latestVideo = await getLatestYouTubeVideo(accessToken, channelId); 
+        
         return new Response(JSON.stringify(latestVideo), {
           status: 200,
           headers: { 'Content-Type': 'application/json' }
