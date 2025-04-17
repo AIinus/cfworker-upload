@@ -112,30 +112,43 @@ async function uploadToPlatform(platform, videoStream, metadata, accessToken) {
  * @returns {Promise<Object>} - 最新视频的信息
  */
 async function getLatestYouTubeVideo(accessToken) {
-  const response = await fetch('https://www.googleapis.com/youtube/v3/search?part=snippet&forMine=true&maxResults=1&order=date&type=video', {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${accessToken}`
+  try {
+    const response = await fetch('https://www.googleapis.com/youtube/v3/search?part=snippet&forMine=true&maxResults=1&order=date&type=video', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+
+    const responseText = await response.text();
+    let responseData;
+    
+    try {
+      responseData = JSON.parse(responseText);
+    } catch (e) {
+      throw new Error(`YouTube API 响应解析失败: ${responseText}`);
     }
-  });
 
-  if (!response.ok) {
-    throw new Error(`YouTube API 错误: ${response.status} ${await response.text()}`);
+    if (!response.ok) {
+      throw new Error(`YouTube API 错误 (${response.status}): ${JSON.stringify(responseData)}`);
+    }
+
+    if (!responseData.items || responseData.items.length === 0) {
+      throw new Error(`未找到视频 (API 响应: ${JSON.stringify(responseData)})`);
+    }
+
+    const video = responseData.items[0];
+    return {
+      id: video.id.videoId,
+      title: video.snippet.title,
+      description: video.snippet.description,
+      publishedAt: video.snippet.publishedAt,
+      thumbnails: video.snippet.thumbnails
+    };
+  } catch (error) {
+    // 重新抛出错误，但添加更多上下文信息
+    throw new Error(`获取最新视频失败: ${error.message}`);
   }
-
-  const data = await response.json();
-  if (!data.items || data.items.length === 0) {
-    throw new Error('未找到视频');
-  }
-
-  const video = data.items[0];
-  return {
-    id: video.id.videoId,
-    title: video.snippet.title,
-    description: video.snippet.description,
-    publishedAt: video.snippet.publishedAt,
-    thumbnails: video.snippet.thumbnails
-  };
 }
 
 export default {
@@ -174,9 +187,11 @@ export default {
           headers: { 'Content-Type': 'application/json' }
         });
       } catch (error) {
+        console.error('获取最新视频时出错:', error);
         return new Response(JSON.stringify({
           success: false,
-          error: error.message
+          error: error.message,
+          timestamp: new Date().toISOString()
         }), {
           status: 500,
           headers: { 'Content-Type': 'application/json' }
