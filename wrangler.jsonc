@@ -1,7 +1,7 @@
 {
   "name": "cfworker-upload",
   "compatibility_date": "2025-04-17",
-  "main": "upload_video.js",
+  "main": "src/index.js",
   "bindings": {
     "VIDEO_BUCKET": {
       "type": "r2",
