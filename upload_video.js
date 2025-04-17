@@ -129,6 +129,7 @@ export default {
         videoId: result.id || 'N/A',
         videoStatus: result.status, // 包含 privacyStatus, publishAt 等
         thumbnailStatus: result.thumbnailUploadStatus || 'N/A', // 封面上传状态
+        presetThumbnails: result.presetThumbnails || null, // 添加 YouTube 自动生成的预设封面图 URL
         message: `视频成功上传到 ${platform}` + (result.thumbnailUploadStatus ? ` (${result.thumbnailUploadStatus})` : '')
       }), {
         status: 200,
