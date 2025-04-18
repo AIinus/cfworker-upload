@@ -280,3 +280,54 @@ export async function getLatestYouTubeVideo(accessToken, channelId) {
     throw new Error(`获取最新视频失败: ${error.message}`);
   }
 }
+
+// 在文件末尾添加新函数
+
+/**
+ * 获取特定视频的详细信息
+ * @param {string} accessToken - YouTube API 的访问令牌
+ * @param {string} videoId - 要查询的视频 ID
+ * @returns {Promise<Object>} - 视频详细信息
+ */
+export async function getVideoDetails(accessToken, videoId) {
+  try {
+    // 使用公共函数格式化 accessToken
+    const formattedAccessToken = formatAccessToken(accessToken, '获取视频详情');
+    
+    // 构建 API URL
+    const apiUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,status,contentDetails,statistics&id=${videoId}`;
+    console.log(`发送请求到 YouTube API: ${apiUrl}`);
+
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': formattedAccessToken
+      }
+    });
+
+    const responseText = await response.text();
+    console.log(`YouTube API 响应状态码: ${response.status}`);
+    
+    let responseData;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch (e) {
+      console.error(`解析响应失败: ${responseText}`);
+      throw new Error(`YouTube API 响应解析失败: ${responseText}`);
+    }
+
+    if (!response.ok) {
+      console.error(`API 错误: ${JSON.stringify(responseData)}`);
+      throw new Error(`YouTube API 错误 (${response.status}): ${JSON.stringify(responseData)}`);
+    }
+
+    if (!responseData.items || responseData.items.length === 0) {
+      throw new Error(`未找到视频 ID: ${videoId}`);
+    }
+
+    // 返回完整的视频信息，包括频道 ID
+    return responseData.items[0];
+  } catch (error) {
+    throw new Error(`获取视频详情失败: ${error.message}`);
+  }
+}

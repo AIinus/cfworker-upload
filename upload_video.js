@@ -25,7 +25,7 @@
  */
 
 import { uploadToPlatform } from './platforms.js';
-import { getLatestYouTubeVideo } from './youtube.js';
+import { getLatestYouTubeVideo, getVideoDetails } from './youtube.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -69,6 +69,49 @@ export default {
         });
       } catch (error) {
         console.error('获取最新视频时出错:', error);
+        return new Response(JSON.stringify({
+          success: false,
+          error: error.message,
+          timestamp: new Date().toISOString()
+        }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    // 新增：获取特定视频详情的端点
+    if (request.method === 'GET' && url.pathname === '/video') {
+      try {
+        // 验证请求的 API 密钥
+        const apiSecret = request.headers.get('X-API-Secret');
+        if (!apiSecret || apiSecret !== env.API_SECRET) {
+          return new Response('API 密钥无效或缺失', { status: 401 });
+        }
+
+        const accessToken = request.headers.get('Authorization')?.replace('Bearer ', '');
+        if (!accessToken) {
+          return new Response('缺少 Authorization 头或 accessToken', { status: 401 });
+        }
+
+        // 从 URL 查询参数获取 videoId (必需)
+        const videoId = url.searchParams.get('videoId');
+        if (!videoId) {
+          return new Response('缺少必需的 videoId 参数', { status: 400 });
+        }
+
+        // 调用函数获取视频详情
+        const videoDetails = await getVideoDetails(accessToken, videoId);
+        
+        return new Response(JSON.stringify({
+          success: true,
+          videoDetails: videoDetails
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (error) {
+        console.error('获取视频详情时出错:', error);
         return new Response(JSON.stringify({
           success: false,
           error: error.message,
