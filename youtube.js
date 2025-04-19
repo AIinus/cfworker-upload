@@ -111,7 +111,22 @@ export async function uploadToYouTube(videoStream, metadata, accessToken, reques
   const videoId = videoResult.id;
 
   if (!videoId) {
-     throw new Error(`视频上传成功，但未能获取 videoId: ${JSON.stringify(videoResult)}`);
+    throw new Error(`视频上传成功，但未能获取 videoId: ${JSON.stringify(videoResult)}`);
+  }
+
+  // 添加：立即验证视频状态
+  const verifyResponse = await fetch(
+    `https://www.googleapis.com/youtube/v3/videos?part=status&id=${videoId}`,
+    {
+      headers: {
+        'Authorization': formattedAccessToken
+      }
+    }
+  );
+
+  const verifyResult = await verifyResponse.json();
+  if (verifyResult.items[0]?.status?.privacyStatus !== 'private') {
+    console.warn(`警告：视频隐私状态验证失败，期望 private 但获得 ${verifyResult.items[0]?.status?.privacyStatus}`);
   }
 
   // --- 2. 上传封面 (thumbnails.set)，如果提供了 coverPath 相关参数 ---
